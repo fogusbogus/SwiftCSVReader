@@ -3,26 +3,9 @@
 
 import Foundation
 
-extension Character {
-	var isCarriageReturn: Bool {
-		return self == "\r"
-	}
-	var isLineBreakWhitespace: Bool {
-		if self.isWhitespace {
-			return self.isNewline
-		}
-		return false
-	}
-}
 
 public protocol CSVFileReaderLogDelegate {
 	func log(_ message: String)
-}
-
-public class Logger : CSVFileReaderLogDelegate {
-	public func log(_ message: String) {
-		print(message)
-	}
 }
 
 extension Dictionary where Key == String, Value == Int {
@@ -33,7 +16,9 @@ extension Dictionary where Key == String, Value == Int {
 }
 
 public class CSVFile {
-	public init(data: String, withHeaders: Bool = true) {
+	public init(data: String, withHeaders: Bool = true, encoding: String.Encoding = .utf8) {
+		self.encoding = encoding
+		self.reader.encoding = encoding
 		self.reader.data = data
 		self.reader.currentPos = data.startIndex
 		if withHeaders {
@@ -42,10 +27,12 @@ public class CSVFile {
 		self.rowIndexes = parse()
 		self.currentLine = self.reader.readLine()
 	}
-	public init?(filePath: String, withHeaders: Bool = true) {
+	public init?(filePath: String, withHeaders: Bool = true, encoding: String.Encoding = .utf8) {
 		guard FileManager.default.fileExists(atPath: filePath) else { return nil }
 		let url = URL(filePath: filePath, directoryHint: .notDirectory)
-		guard let data = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+		guard let data = try? String(contentsOf: url, encoding: encoding) else { return nil }
+		self.encoding = encoding
+		self.reader.encoding = encoding
 		self.reader.data = data
 		self.reader.currentPos = data.startIndex
 		if withHeaders {
@@ -54,8 +41,10 @@ public class CSVFile {
 		self.rowIndexes = parse()
 		self.currentLine = self.reader.readLine()
 	}
-	public init?(url: URL, withHeaders: Bool = true) {
-		guard let data = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+	public init?(url: URL, withHeaders: Bool = true, encoding: String.Encoding = .utf8) {
+		guard let data = try? String(contentsOf: url, encoding: encoding) else { return nil }
+		self.encoding = encoding
+		self.reader.encoding = encoding
 		self.reader.data = data
 		self.reader.currentPos = data.startIndex
 		if withHeaders {
@@ -67,6 +56,7 @@ public class CSVFile {
 	private var headers: [String:Int] = [:]
 	private var reader: CSVFileReader = CSVFileReader(data: "")
 	private var rowIndexes: [String.Index] = []
+	private var encoding: String.Encoding = .utf8
 
 	public var currentLine: [String] = []
 	
@@ -182,14 +172,16 @@ public class CSVFile {
 
 public class CSVFileReader {
 	
-	public init(data: String, currentPos: String.Index? = nil) {
+	public init(data: String, currentPos: String.Index? = nil, encoding: String.Encoding? = nil) {
 		self.data = data
 		self.currentPos = currentPos ?? data.startIndex
+		self.encoding = encoding ?? self.encoding
 	}
 	
 	public var logger: CSVFileReaderLogDelegate? = nil
 	
 	var data: String
+	var encoding: String.Encoding = .utf8
 	var logCurrentPosChange = ""
 	var currentPos: String.Index {
 		didSet {
