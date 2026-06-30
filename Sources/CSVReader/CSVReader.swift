@@ -4,18 +4,28 @@
 import Foundation
 
 
+/// Providing an derived instance will allow logging output from the CSV converter
 public protocol CSVFileReaderLogDelegate {
 	func log(_ message: String)
 }
 
 extension Dictionary where Key == String, Value == Int {
+	/// For our headers collection, this allows indexing by a caseless key
+	/// - Parameter key: The key to look for
+	/// - Returns: The value matched to the key
 	func valueOf(key: String) -> Value? {
 		guard let myKey = self.keys.first(where: {$0 == key}) ?? self.keys.first(where: {$0.localizedCaseInsensitiveCompare(key) == .orderedSame}) else { return nil }
 		return self[myKey]
 	}
 }
 
+/// CSV file processor
 public class CSVFile {
+	/// Initializer from some string data
+	/// - Parameters:
+	///   - data: String representation of the CSV file
+	///   - withHeaders: Is the first row headers?
+	///   - encoding: How the string is encoded.
 	public init(data: String, withHeaders: Bool = true, encoding: String.Encoding = .utf8) {
 		self.encoding = encoding
 		self.reader.encoding = encoding
@@ -25,8 +35,13 @@ public class CSVFile {
 			self.headers = reader.readHeaders()
 		}
 		self.rowIndexes = parse()
-		self.currentLine = self.reader.readLine()
+		self.currentLine = self.reader.readRow()
 	}
+	/// Initializer from some file path
+	/// - Parameters:
+	///   - filePath: Location of the csv data
+	///   - withHeaders: Is the first row headers?
+	///   - encoding: The encoding of the file
 	public init?(filePath: String, withHeaders: Bool = true, encoding: String.Encoding = .utf8) {
 		guard FileManager.default.fileExists(atPath: filePath) else { return nil }
 		let url = URL(filePath: filePath, directoryHint: .notDirectory)
@@ -39,8 +54,13 @@ public class CSVFile {
 			self.headers = reader.readHeaders()
 		}
 		self.rowIndexes = parse()
-		self.currentLine = self.reader.readLine()
+		self.currentLine = self.reader.readRow()
 	}
+	/// Initializer from a URL
+	/// - Parameters:
+	///   - url: The location of the csv data
+	///   - withHeaders: Is the first row headers?
+	///   - encoding: How is the data encoded
 	public init?(url: URL, withHeaders: Bool = true, encoding: String.Encoding = .utf8) {
 		guard let data = try? String(contentsOf: url, encoding: encoding) else { return nil }
 		self.encoding = encoding
@@ -51,35 +71,42 @@ public class CSVFile {
 			self.headers = reader.readHeaders()
 		}
 		self.rowIndexes = parse()
-		self.currentLine = self.reader.readLine()
+		self.currentLine = self.reader.readRow()
 	}
 	private var headers: [String:Int] = [:]
 	private var reader: CSVFileReader = CSVFileReader(data: "")
 	private var rowIndexes: [String.Index] = []
 	private var encoding: String.Encoding = .utf8
-
+	
+	/// The current row's data
 	public var currentLine: [String] = []
 	
-	public func nextLine() {
-		self.currentLine = self.reader.readLine()
+	/// Get the next row of data
+	public func nextRow() {
+		self.currentLine = self.reader.readRow()
 	}
 	
-	public func readLine(at: String.Index) -> [String] {
+	/// Read the next row of data
+	/// - Parameter at: Starting at string index
+	/// - Returns: An array of data for the row
+	public func readRow(at: String.Index) -> [String] {
 		guard at < reader.data.endIndex else {
 			return []
 		}
 		let cp = reader.currentPos
 		reader.currentPos = at
 		let cl = currentLine
-		nextLine()
+		nextRow()
 		let ret = currentLine
 		currentLine = cl
 		reader.currentPos = cp
 		return ret
 	}
 	
+	/// Is the data exhausted?
 	public var atEndOfFile: Bool { reader.atEnd }
-	public var atEndOfLine: Bool { reader.atEndOfLine() }
+	/// A the end of a row? This will normally be true.
+	public var atEndOfRow: Bool { reader.atEndOfRow() }
 	
 	public subscript (_ headerName: String) -> String? {
 		get {
@@ -96,7 +123,7 @@ public class CSVFile {
 			if let key = headers.keys.first(where: {$0.localizedStandardCompare(headerName) == .orderedSame}) ?? headers.keys.first(where: {$0.localizedCaseInsensitiveCompare(headerName) == .orderedSame}) {
 				if row < rowIndexes.count {
 					let rowIndex = rowIndexes[row]
-					let data = readLine(at: rowIndex)
+					let data = readRow(at: rowIndex)
 					let colIndex = headers[key]!
 					if colIndex < data.count {
 						return data[colIndex]
@@ -104,10 +131,10 @@ public class CSVFile {
 				}
 				return nil
 			} else {
-				if let col = self.cellReference("\(headerName)0") {
+				if let col = Self.cellReference("\(headerName)0") {
 					if col.row < rowIndexes.count {
 						let rowIndex = rowIndexes[col.row]
-						let data = readLine(at: rowIndex)
+						let data = readRow(at: rowIndex)
 						if col.col < data.count {
 							return data[col.col]
 						}
@@ -129,7 +156,10 @@ public class CSVFile {
 		}
 	}
 	
-	public func cellReference(_ colRow: String) -> (row: Int, col: Int)? {
+	/// Calculate a cell reference (A1, BC45, etc.)
+	/// - Parameter colRow: The colRow reference
+	/// - Returns: A row and column index
+	public static func cellReference(_ colRow: String) -> (row: Int, col: Int)? {
 		let col = colRow.filter {$0.isLetter}.uppercased()
 		let row = Int(colRow.filter {$0.isNumber})
 		var colIndex = 0
@@ -144,18 +174,25 @@ public class CSVFile {
 		return nil
 	}
 	
+	/// Parse the data for row indexes
+	/// - Returns: Row string indexes
 	public func parse() -> [String.Index] {
 		let cp = reader.currentPos
 		reader.currentPos = reader.data.startIndex
 		var ret: [String.Index] = []
 		while !reader.atEnd {
 			ret.append(reader.currentPos)
-			_ = reader.readLine()
+			_ = reader.readRow()
 		}
 		reader.currentPos = cp
 		return ret
 	}
 	
+	/// Retrieve a value for a header key
+	/// - Parameters:
+	///   - headerName: The name of the header
+	///   - defaultValue: Defines the type of the data returned and a default value if the header is missing or the data cannot be converted
+	/// - Returns: The value or the default value if not found/convertable
 	public func `get`<T>(_ headerName: String, _ defaultValue: T) -> T {
 		guard let key = headers.keys.first(where: {$0.localizedStandardCompare(headerName) == .orderedSame}) ?? headers.keys.first(where: {$0.localizedCaseInsensitiveCompare(headerName) == .orderedSame}) else { return defaultValue }
 		if currentLine.count > headers[key]! {
@@ -164,25 +201,42 @@ public class CSVFile {
 		return defaultValue
 	}
 	
+	/// Retrieve a value for a column index
+	/// - Parameters:
+	///   - index: Zero-based index of the column
+	///   - defaultValue: Defines the type of the data returned and a default value if the header is missing or the data cannot be converted
+	/// - Returns: The value or the default value if not found/convertable
 	public func `get`<T>(_ index: Int, _ defaultValue: T) -> T {
 		guard (0..<currentLine.count).contains(index) else { return defaultValue }
 		return currentLine[index] as? T ?? defaultValue
 	}
 }
 
+/// A file reader for a CSV. Use CSVFile to read the file - this is moreorless the file processor whereas CSVFile is a friendlier interface
 public class CSVFileReader {
 	
-	public init(data: String, currentPos: String.Index? = nil, encoding: String.Encoding? = nil) {
+	/// Initializer with string data
+	/// - Parameters:
+	///   - data: The string data to process
+	///   - currentPos: You can set the current string index of where the data starts within the string data
+	///   - encoding: How the data is encoded
+	///   - logger: An optional logger
+	public init(data: String, currentPos: String.Index? = nil, encoding: String.Encoding? = nil, logger: CSVFileReaderLogDelegate? = nil) {
 		self.data = data
 		self.currentPos = currentPos ?? data.startIndex
 		self.encoding = encoding ?? self.encoding
+		self.logger = logger
 	}
 	
+	/// An optional logger
 	public var logger: CSVFileReaderLogDelegate? = nil
 	
+	/// The csv string data
 	var data: String
+	/// How the csv string data is encoded
 	var encoding: String.Encoding = .utf8
-	var logCurrentPosChange = ""
+	private var logCurrentPosChange = ""
+	/// The string index of the current row being processed
 	var currentPos: String.Index {
 		didSet {
 			if !logCurrentPosChange.isEmpty {
@@ -191,23 +245,29 @@ public class CSVFileReader {
 			}
 		}
 	}
+	
+	/// Is the data exhausted
 	public var atEnd: Bool {
 		currentPos >= data.endIndex
 	}
 	
-	public func atEndOfLine() -> Bool {
+	/// At the end of a row? This is usually false as currentPos will be the next processing row. But during processing this will change depending on whether the string index is at the end of a row or not
+	/// - Returns: True/false
+	public func atEndOfRow() -> Bool {
 		if let next = data.nextCharacter(currentPos, where: { $0.isNewline || !$0.isWhitespace }) {
 			return next.isNewline
 		}
 		
-		//End of file is end of line
+		//End of file is end of row
 		return true
 	}
 	
+	/// Read the current row as a list of headers
+	/// - Returns: Key and column index dictionary. Repeated headers will be overwritten.
 	public func readHeaders() -> [String:Int] {
 		logger?.log("<< readHeaders() >>")
 		currentPos = data.startIndex
-		let items = readLine()
+		let items = readRow()
 		var ret: [String:Int] = [:]
 		(0..<items.count).forEach { index in
 			ret[items[index]] = index
@@ -215,9 +275,12 @@ public class CSVFileReader {
 		return ret
 	}
 	
-	public func readDataLine(headers: [String:Int]) -> [String:String] {
+	/// Reads a data row using the headers.
+	/// - Parameter headers: The headers for the CSV.
+	/// - Returns: A dictionary of header:value
+	public func readDataRow(headers: [String:Int]) -> [String:String] {
 		logger?.log("<< readDataLine(headers) >>")
-		let items = readLine()
+		let items = readRow()
 		var ret: [String:String] = [:]
 		headers.keys.forEach { key in
 			let index = headers[key]!
@@ -231,10 +294,12 @@ public class CSVFileReader {
 		return ret
 	}
 	
-	public func readLine() -> [String] {
-		logger?.log("<< readLine() >>")
+	/// Read the next row as an array of string items
+	/// - Returns: Array of string items
+	public func readRow() -> [String] {
+		logger?.log("<< readRow() >>")
 		var ret: [String] = []
-		while !atEndOfLine() {
+		while !atEndOfRow() {
 			ret.append(readNext())
 		}
 		logger?.log("  - \(ret.count) items read")
@@ -242,9 +307,12 @@ public class CSVFileReader {
 		return ret
 	}
 	
+	/// Reads the next data item (column)
+	/// - Parameter startingAt: An optional string index of where to read from. currentPos is default
+	/// - Returns: A string data item
 	public func readNext(startingAt: String.Index? = nil) -> String {
 		guard !atEnd else { return "" }
-		guard !atEndOfLine() else {
+		guard !atEndOfRow() else {
 			currentPos = data.afterIndex("\n", startingAtIndex: startingAt ?? currentPos)
 			return ""
 		}
@@ -255,7 +323,7 @@ public class CSVFileReader {
 				let text = data.extractQuoted(currentPos)
 				logCurrentPosChange = "quoted(\(text))"
 				currentPos = text.index
-				if !atEndOfLine() {
+				if !atEndOfRow() {
 					//We've only extracted the quote item (we need to remove the outer quotes as well), so look for the next EOL or comma
 					logCurrentPosChange = "after quoted"
 					if data.extract(currentPos, 2) == "\r\n" {

@@ -9,8 +9,8 @@ func musicCSV() -> String {
 	let file = CSVFile(data: musicCSV())
 	let lineIndexes = file.parse()
 	#expect(lineIndexes.count == 200)
-	print(file.readLine(at: lineIndexes[198]))
-	#expect(file.readLine(at: lineIndexes[198]) == ["", "144", "", "~~~~0~", "", "", "", "", "", "", "", "", "", "", "", ""])
+	print(file.readRow(at: lineIndexes[198]))
+	#expect(file.readRow(at: lineIndexes[198]) == ["", "144", "", "~~~~0~", "", "", "", "", "", "", "", "", "", "", "", ""])
 	print(lineIndexes.count)
 }
 
