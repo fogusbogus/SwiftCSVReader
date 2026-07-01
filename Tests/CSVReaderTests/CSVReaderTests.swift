@@ -23,3 +23,15 @@ func csv() -> String {
 	#expect(headers.valueOf(key: "heading \"6\"") == 5)
 	print(headers.keys)
 }
+
+@Test func headersRepeatingOverwrite() async throws {
+	let csv = CSVFileReader(data: "H1,!,H2,!,H3,!")
+	let headers = csv.readHeaders(indexForUniqueness: false)
+	#expect(headers.count == 4)
+}
+
+@Test func headersRepeatingIndexes() async throws {
+	let csv = CSVFileReader(data: "H1,!,H2,!,H3,!")
+	let headers = csv.readHeaders(indexForUniqueness: true)
+	#expect(headers.count == 6)
+}

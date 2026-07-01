@@ -65,7 +65,7 @@ public extension StringProtocol {
 	}
 	
 	func nextCharacterPosition(_ position: String.Index, where: ((Character) -> Bool)? = nil) -> String.Index? {
-		guard position < index(endIndex, offsetBy: -1, limitedBy: startIndex) ?? startIndex else { return nil }
+		guard position < endIndex else { return nil }
 		var position = position
 		if `where` == nil { return position }
 		while position < endIndex && position >= startIndex {
@@ -110,7 +110,7 @@ public extension StringProtocol {
 	}
 	
 	func extract(_ position: String.Index, _ count: Int) -> String {
-		return String(self[position..<index(position, offsetBy: count, limitedBy: endIndex)!])
+		return String(self[position..<(index(position, offsetBy: count, limitedBy: endIndex) ?? endIndex)])
 	}
 	
 	func extract(_ range: Range<String.Index>) -> String {

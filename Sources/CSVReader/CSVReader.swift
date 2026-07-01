@@ -254,23 +254,35 @@ public class CSVFileReader {
 	/// At the end of a row? This is usually false as currentPos will be the next processing row. But during processing this will change depending on whether the string index is at the end of a row or not
 	/// - Returns: True/false
 	public func atEndOfRow() -> Bool {
-		if let next = data.nextCharacter(currentPos, where: { $0.isNewline || !$0.isWhitespace }) {
-			return next.isNewline
-		}
-		
-		//End of file is end of row
-		return true
+		if data.extract(currentPos, 2) == "\r\n" || data.extract(currentPos, 1) == "\n" { return true }
+		return atEnd
 	}
 	
 	/// Read the current row as a list of headers
 	/// - Returns: Key and column index dictionary. Repeated headers will be overwritten.
-	public func readHeaders() -> [String:Int] {
+	public func readHeaders(indexForUniqueness: Bool = false) -> [String:Int] {
 		logger?.log("<< readHeaders() >>")
 		currentPos = data.startIndex
 		let items = readRow()
 		var ret: [String:Int] = [:]
+		var repeating: [String:Int] = [:]
+		if indexForUniqueness {
+			//Get all the header items that have > 1
+			items.forEach { item in
+				if items.count(where: {$0 == item}) > 1 {
+					repeating[item] = 0
+				}
+			}
+		}
 		(0..<items.count).forEach { index in
-			ret[items[index]] = index
+			let key = items[index]
+			if repeating.keys.contains(key) {
+				ret["\(key)[\(repeating[key]!)]"] = index
+				repeating[key]! += 1
+			}
+			else {
+				ret[key] = index
+			}
 		}
 		return ret
 	}
